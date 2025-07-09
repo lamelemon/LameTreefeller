@@ -1,0 +1,7 @@
+name: lametreefeller
+version: '1.0.0'
+main: io.github.lamelemon.lametreefeller.TreeFellerPlugin
+api-version: '1.21'
+authors: [ lamius lemonius ]
+description: Fuck you.
+website: https://youtu.be/dQw4w9WgXcQ
