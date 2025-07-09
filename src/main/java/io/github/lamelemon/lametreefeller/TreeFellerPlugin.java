@@ -19,6 +19,7 @@ import java.util.*;
 public class TreeFellerPlugin extends JavaPlugin implements Listener {
 
     public int maxLogsBroken = 500;  // change later to be from a config file
+    public int minimumLeaves = 9;
 
     // Lets us only check what is necessary (SELF is used for checking blocks under and above the broken block)
     private final TreeSet<BlockFace> faces = new TreeSet<>(Set.of(
@@ -26,19 +27,19 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
         BlockFace.NORTH, BlockFace.NORTH_EAST, BlockFace.NORTH_WEST,
         BlockFace.EAST,
         BlockFace.SOUTH, BlockFace.SOUTH_EAST, BlockFace.SOUTH_WEST,
-        BlockFace.WEST // also allows me to at some point make it only check whats necessary
+        BlockFace.WEST // also allows me to at some point make it only check what's necessary
     ));
 
     @Override
     public void onEnable() {
         // Register as an event listener
         getServer().getPluginManager().registerEvents(this, this);
-        getLogger().info("Treefeller enabled and registered as an event."); // debug for checking if plugin actually enables and class successfully registers as an event
+        getLogger().info("Tree feller enabled and registered as an event."); // debug for checking if plugin actually enables and class successfully registers as an event
     }
 
     @Override
     public void onDisable() {
-        getLogger().info("Treefeller disabled."); // debug for checking if plugin actually disables
+        getLogger().info("Tree feller disabled."); // debug for checking if plugin actually disables
     }
 
     // Ran whenever a block is broken
@@ -47,18 +48,15 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
         Player player = event.getPlayer();
         Block start = event.getBlock(); // the block that was broken
         ItemStack heldAxe = player.getInventory().getItemInMainHand();
+        long startingTime = System.nanoTime();
 
         // Skip if not holding axe and block isn't a log or player is sneaking
         if (isHoldingAxe(heldAxe.getType()) && isLog(start.getType()) && player.isSneaking()) {
-            long startingTime = System.nanoTime();
-            long timeout = 50_000_000;
 
             HashSet<Block> blocksToBreak = recursiveLogBreaker(
-                    start,
-                    new HashSet<>(Set.of(start)),
-                    start.getType(),
-                    startingTime,
-                    timeout
+                start,
+                new HashSet<>(Set.of(start)),
+                start.getType()
             );
 
             getLogger().info("Found " + blocksToBreak.size() + " blocks to break and took " + ((System.nanoTime() - startingTime) / 1_000_000) + " milliseconds to do so.");
@@ -77,11 +75,9 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
 
 
     private HashSet<Block> recursiveLogBreaker(
-            Block block,
-            HashSet<Block> blocksHandled,
-            Material firstBlock,
-            long startTime,
-            long timeoutNanos
+            Block block, // The block to run the function on
+            HashSet<Block> blocksHandled, // Stores all blocks that have been visited
+            Material firstBlock // The first block that was broken (for preventing breaking multiple types of trees)
     ) {
 
         // Stop function if we have hit the max amount of logs broken
@@ -89,9 +85,6 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
 
             // Stop if log is not the right type or if they aren't leaves.
             || !(block.getType() == firstBlock || canBreak(block.getType()))
-
-            // Time out the function so we don't get infinite recursion
-            || System.nanoTime() - startTime > timeoutNanos
             ) {
 
             return blocksHandled;
@@ -109,9 +102,9 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
 
             // Iterate through all 3 blocks, checking if they fit requirements.
             for (Block b : foundBlocks) {
-                // check if treefeller is allowed to break the block and then attempt to add
+                // check if tree feller is allowed to break the block and then attempt to add
                 if (canBreak(b.getType()) && !blocksHandled.contains(b)) {
-                    blocksHandled = recursiveLogBreaker(b, blocksHandled, firstBlock, startTime, timeoutNanos);
+                    blocksHandled = recursiveLogBreaker(b, blocksHandled, firstBlock);
                 }
             }
         }
@@ -119,18 +112,23 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
         return  blocksHandled;
     }
 
-    // account for unbreaking on player's axe
+    // mimic item damaging
     private boolean durabilityHandler(ItemStack axe, Player player) {
         return player.getGameMode() != GameMode.CREATIVE && 1.0 / (axe.getEnchantmentLevel(Enchantment.UNBREAKING) + 1) > Math.random();
-    }// this emulates the unbreaking calculation
+    }
 
-    // Helper for checking if the block is a log/stem
+    // Helper for checking if the block is a Log / Stem
     private boolean isLog(Material material) {
         return Tag.LOGS.isTagged(material);
     }
 
+    // Helper for checking if the block is a Leaf / Wart block / Shroom light
+    private boolean isLeaf(Material material) {
+        return Tag.LEAVES.isTagged(material) || Tag.WART_BLOCKS.isTagged(material) || material == Material.SHROOMLIGHT;
+    }
+
     private boolean canBreak(Material material) {
-        return isLog(material) || Tag.LEAVES.isTagged(material) || Tag.WART_BLOCKS.isTagged(material) || material == Material.SHROOMLIGHT;
+        return isLog(material) || isLeaf(material);
     }
 
     private boolean isHoldingAxe(Material type) {
