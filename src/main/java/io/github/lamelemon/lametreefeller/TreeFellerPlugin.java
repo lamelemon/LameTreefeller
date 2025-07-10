@@ -17,23 +17,18 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.*;
 
 public class TreeFellerPlugin extends JavaPlugin implements Listener {
+    private static TreeFellerPlugin instance;
 
     public int maxLogsBroken = 500;  // change later to be from a config file
-    public int minimumLeaves = 9;
-
-    // Lets us only check what is necessary (SELF is used for checking blocks under and above the broken block)
-    private final TreeSet<BlockFace> faces = new TreeSet<>(Set.of(
-        BlockFace.SELF,
-        BlockFace.NORTH, BlockFace.NORTH_EAST, BlockFace.NORTH_WEST,
-        BlockFace.EAST,
-        BlockFace.SOUTH, BlockFace.SOUTH_EAST, BlockFace.SOUTH_WEST,
-        BlockFace.WEST // also allows me to at some point make it only check what's necessary
-    ));
+    private HashSet<BlockFace> faces;
 
     @Override
     public void onEnable() {
+        instance = this;
         // Register as an event listener
         getServer().getPluginManager().registerEvents(this, this);
+        TreeFellerAPI.loadTreeStructureFromJson();
+        faces = TreeFellerAPI.getFaces();
         getLogger().info("Tree feller enabled and registered as an event."); // debug for checking if plugin actually enables and class successfully registers as an event
     }
 
@@ -61,14 +56,7 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
 
             getLogger().info("Found " + blocksToBreak.size() + " blocks to break and took " + ((System.nanoTime() - startingTime) / 1_000_000) + " milliseconds to do so.");
 
-            int damageTaken = 0;
-
-            for (Block block : blocksToBreak) {
-                if (durabilityHandler(heldAxe, player)) damageTaken++;
-                block.breakNaturally(heldAxe);
-            }
-
-            heldAxe.damage(damageTaken, player);
+            breakHandler(heldAxe, player, blocksToBreak);
         }
     }
 
@@ -84,9 +72,8 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
         if (blocksHandled.size() >= maxLogsBroken
 
             // Stop if log is not the right type or if they aren't leaves.
-            || !(block.getType() == firstBlock || canBreak(block.getType()))
+            || !(TreeFellerAPI.getTreeStructure(firstBlock.toString()).contains(block.getType()))
             ) {
-
             return blocksHandled;
         }
 
@@ -94,11 +81,14 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
 
         // Check all sides of the block broken
         for (BlockFace direction : faces) {
-            if (blocksHandled.size() >= maxLogsBroken) return blocksHandled;
-
             Block foundBlock = block.getRelative(direction); // Get block in direction
+
             // Get blocks above and below the block in addition to itself
-            HashSet<Block> foundBlocks = new HashSet<>(Set.of(foundBlock, foundBlock.getRelative(BlockFace.UP), foundBlock.getRelative(BlockFace.DOWN)));
+            Block[] foundBlocks = {
+                    foundBlock,
+                    foundBlock.getRelative(BlockFace.UP),
+                    foundBlock.getRelative(BlockFace.DOWN)
+            };
 
             // Iterate through all 3 blocks, checking if they fit requirements.
             for (Block b : foundBlocks) {
@@ -112,9 +102,20 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
         return  blocksHandled;
     }
 
+    public static TreeFellerPlugin getInstance() {
+        return instance;
+    }
+
     // mimic item damaging
-    private boolean durabilityHandler(ItemStack axe, Player player) {
-        return player.getGameMode() != GameMode.CREATIVE && 1.0 / (axe.getEnchantmentLevel(Enchantment.UNBREAKING) + 1) > Math.random();
+    private void breakHandler(ItemStack axe, Player player, HashSet<Block> blocks) {
+        int damageTaken = 0;
+
+        for (Block b : blocks) {
+            if (player.getGameMode() != GameMode.CREATIVE && 1.0 / (axe.getEnchantmentLevel(Enchantment.UNBREAKING) + 1) > Math.random()) damageTaken++;
+            b.breakNaturally(axe);
+        }
+
+        axe.damage(damageTaken, player);
     }
 
     // Helper for checking if the block is a Log / Stem

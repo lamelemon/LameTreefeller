@@ -1,0 +1,7 @@
+treeFeller:
+  enabled: true # Turn plugin on/off
+  maxLogs: 500 # Max amount of logs that one activation may break
+  sneakToActivate: true # Set to false if sneaking disables activation, true if it enables it.
+  treeStructureFile: tree_structure.json # File that stores what logs work with what leaves
+  maxTreeHeight: 50
+  maxTreeWidth: 10
