@@ -1,9 +1,7 @@
 package io.github.lamelemon.lametreefeller;
 
 
-import org.bukkit.GameMode;
-import org.bukkit.Material;
-import org.bukkit.Tag;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.enchantments.Enchantment;
@@ -22,6 +20,8 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
     public int maxLogsBroken = 500;  // change later to be from a config file
     private HashSet<BlockFace> faces;
 
+    private Location location;
+
     @Override
     public void onEnable() {
         instance = this;
@@ -30,6 +30,34 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
         TreeFellerAPI.loadTreeStructureFromJson();
         faces = TreeFellerAPI.getFaces();
         getLogger().info("Tree feller enabled and registered as an event."); // debug for checking if plugin actually enables and class successfully registers as an event
+        World world = Bukkit.getWorld("world");
+        if (world == null) {
+            getLogger().severe("World is not loaded!");
+            return;
+        }
+        location = new Location(Bukkit.getWorld("world"), 0,10,0);
+
+        for (int i = 0; i < 1000; i++) { // warmup
+            blockCoordinates();
+            blockFaces();
+        }
+        int runs = 1000000;
+        long startCoordinates = System.nanoTime(); // benchmarking
+        for (int i = 0; i < runs; i++) {
+            blockCoordinates();
+        }
+        long endCoordinates = System.nanoTime();
+        long durationCoordinates = endCoordinates - startCoordinates;
+
+        long startFaces = System.nanoTime();
+        for (int i = 0; i < runs; i++) {
+            blockFaces();
+        }
+        long endFaces = System.nanoTime();
+        long durationFaces = endFaces - startFaces;
+
+        getLogger().info("blockCoordinates() took " + durationCoordinates / 1000000 + " ms");
+        getLogger().info("blockFaces() took " + durationFaces / 1000000 + " ms");
     }
 
     @Override
@@ -56,7 +84,8 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
 
             getLogger().info("Found " + blocksToBreak.size() + " blocks to break and took " + ((System.nanoTime() - startingTime) / 1_000_000) + " milliseconds to do so.");
 
-            breakHandler(heldAxe, player, blocksToBreak);
+            breakHandler(heldAxe, player.getGameMode(), blocksToBreak);
+            heldAxe.damage(1, player);
         }
     }
 
@@ -107,15 +136,13 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
     }
 
     // mimic item damaging
-    private void breakHandler(ItemStack axe, Player player, HashSet<Block> blocks) {
+    private void breakHandler(ItemStack axe, GameMode gameMode, HashSet<Block> blocks) {
         int damageTaken = 0;
 
         for (Block b : blocks) {
-            if (player.getGameMode() != GameMode.CREATIVE && 1.0 / (axe.getEnchantmentLevel(Enchantment.UNBREAKING) + 1) > Math.random()) damageTaken++;
+            if (gameMode != GameMode.CREATIVE && 1.0 / (axe.getEnchantmentLevel(Enchantment.UNBREAKING) + 1) > Math.random()) damageTaken++;
             b.breakNaturally(axe);
         }
-
-        axe.damage(damageTaken, player);
     }
 
     // Helper for checking if the block is a Log / Stem
@@ -134,5 +161,36 @@ public class TreeFellerPlugin extends JavaPlugin implements Listener {
 
     private boolean isHoldingAxe(Material type) {
         return Tag.ITEMS_AXES.isTagged(type);
+    }
+
+    private void blockCoordinates() {
+        HashSet<Block> blocks = new HashSet<>();
+        for (int x = -1; x <= 1; x++) {
+            for (int y = -1; y <= 1; y++) {
+                for(int z = -1; z <= 1; z++) {
+                    addIfBreakable(blocks, location.clone().add(x, y, z).getBlock());
+                }
+            }
+        }
+    }
+
+    private void blockFaces() {
+        Block block = location.getBlock();
+        HashSet<Block> blocks = new HashSet<>();
+        // Check all sides of the block broken
+        for (BlockFace direction : faces) {
+            Block foundBlock = block.getRelative(direction); // Get block in direction
+
+            // Iterate through all 3 blocks, checking if they fit requirements.
+            addIfBreakable(blocks, foundBlock);
+            addIfBreakable(blocks, foundBlock.getRelative(BlockFace.UP));
+            addIfBreakable(blocks, foundBlock.getRelative(BlockFace.DOWN));
+        }
+    }
+
+    private void addIfBreakable(Set<Block> blocks, Block block) {
+        if (canBreak(block.getType())) {
+            blocks.add(block);
+        }
     }
 }
